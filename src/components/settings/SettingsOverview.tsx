@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -70,15 +69,18 @@ export const SettingsOverview = () => {
     }
   };
 
-  const handleSaveProfile = async (formData: FormData) => {
+  const handleSaveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    
     try {
       const updates = {
-        business_name: formData.get('businessName'),
-        phone: formData.get('phone'),
-        business_email: formData.get('businessEmail'),
-        industry: formData.get('industry'),
-        tax_status: formData.get('taxStatus'),
-        whatsapp_number: formData.get('whatsappNumber')
+        business_name: formData.get('businessName')?.toString() || '',
+        phone: formData.get('phone')?.toString() || '',
+        business_email: formData.get('businessEmail')?.toString() || '',
+        industry: formData.get('industry')?.toString() || '',
+        tax_status: formData.get('taxStatus')?.toString() || '',
+        whatsapp_number: formData.get('whatsappNumber')?.toString() || ''
       };
 
       const { error } = await supabase
@@ -133,7 +135,7 @@ export const SettingsOverview = () => {
               <CardDescription>Update your business information</CardDescription>
             </CardHeader>
             <CardContent>
-              <form action={handleSaveProfile} className="space-y-4">
+              <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="businessName">Business Name</Label>
