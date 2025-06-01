@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Building2 } from 'lucide-react';
 
+type PlanName = 'basic' | 'standard' | 'premium';
+
 export const BusinessSetup = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -22,23 +24,23 @@ export const BusinessSetup = () => {
     businessEmail: '',
     industry: '',
     taxStatus: '',
-    planId: ''
+    planId: '' as PlanName | ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !formData.planId) return;
 
     setIsLoading(true);
     try {
       // Get the selected plan
-      const { data: plans } = await supabase
+      const { data: plan } = await supabase
         .from('plans')
         .select('id')
-        .eq('name', formData.planId)
+        .eq('name', formData.planId as PlanName)
         .single();
 
-      if (!plans) throw new Error('Plan not found');
+      if (!plan) throw new Error('Plan not found');
 
       // Create business profile
       const { error: profileError } = await supabase
@@ -50,23 +52,28 @@ export const BusinessSetup = () => {
           business_email: formData.businessEmail,
           industry: formData.industry,
           tax_status: formData.taxStatus,
-          plan_id: plans.id,
+          plan_id: plan.id,
           whatsapp_number: formData.phone
         });
 
       if (profileError) throw profileError;
+
+      // Get the created business profile
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!businessProfile) throw new Error('Failed to create business profile');
 
       // Create subscription
       const { error: subscriptionError } = await supabase
         .from('subscriptions')
         .insert({
           user_id: user.id,
-          business_id: (await supabase
-            .from('business_profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .single()).data?.id,
-          plan_id: plans.id,
+          business_id: businessProfile.id,
+          plan_id: plan.id,
           payment_status: 'trial'
         });
 
