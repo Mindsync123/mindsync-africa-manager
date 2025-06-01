@@ -37,12 +37,36 @@ const App = () => {
                 </AuthGuard>
               }>
                 <Route index element={<Dashboard />} />
-                <Route path="accounting" element={<div>Accounting Module</div>} />
-                <Route path="inventory" element={<div>Inventory Module</div>} />
-                <Route path="customers" element={<div>Customers Module</div>} />
-                <Route path="invoices" element={<div>Invoices Module</div>} />
-                <Route path="reports" element={<div>Reports Module</div>} />
-                <Route path="settings" element={<div>Settings Module</div>} />
+                <Route path="accounting" element={
+                  <LazyComponent>
+                    <AccountingPage />
+                  </LazyComponent>
+                } />
+                <Route path="inventory" element={
+                  <LazyComponent>
+                    <InventoryPage />
+                  </LazyComponent>
+                } />
+                <Route path="customers" element={
+                  <LazyComponent>
+                    <CustomersPage />
+                  </LazyComponent>
+                } />
+                <Route path="invoices" element={
+                  <LazyComponent>
+                    <InvoicesPage />
+                  </LazyComponent>
+                } />
+                <Route path="reports" element={
+                  <LazyComponent>
+                    <ReportsPage />
+                  </LazyComponent>
+                } />
+                <Route path="settings" element={
+                  <LazyComponent>
+                    <SettingsPage />
+                  </LazyComponent>
+                } />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -52,5 +76,21 @@ const App = () => {
     </QueryClientProvider>
   );
 };
+
+// Lazy loading wrapper component
+const LazyComponent = ({ children }: { children: React.ReactNode }) => (
+  <React.Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
+    {children}
+  </React.Suspense>
+);
+
+// Import the page components
+import { AccountingPage } from './pages/AccountingPage';
+import { InventoryPage } from './pages/InventoryPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { InvoicesPage } from './pages/InvoicesPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { SettingsPage } from './pages/SettingsPage';
+import React from 'react';
 
 export default App;
