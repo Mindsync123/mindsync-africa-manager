@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Package, AlertTriangle, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AddProductForm } from './AddProductForm';
 
 interface Product {
   id: string;
@@ -26,6 +27,7 @@ export const ProductList = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -65,12 +67,39 @@ export const ProductList = () => {
     }
   };
 
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Product Deleted",
+        description: "Product has been successfully deleted."
+      });
+
+      fetchProducts();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message
+      });
+    }
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const lowStockProducts = products.filter(p => p.stock_quantity <= p.reorder_level);
+  const totalStockValue = products.reduce((sum, p) => sum + (p.stock_quantity * p.unit_price), 0);
 
   if (loading) return <div>Loading products...</div>;
 
@@ -81,10 +110,45 @@ export const ProductList = () => {
           <h2 className="text-2xl font-bold">Products</h2>
           <p className="text-gray-600">Manage your inventory items</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Product
         </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{products.length}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">{lowStockProducts.length}</div>
+            <p className="text-xs text-muted-foreground">Need restocking</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Stock Value</CardTitle>
+            <Badge variant="outline">₦</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">₦{totalStockValue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Total inventory value</p>
+          </CardContent>
+        </Card>
       </div>
 
       {lowStockProducts.length > 0 && (
@@ -131,7 +195,11 @@ export const ProductList = () => {
                   <Button variant="ghost" size="sm">
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => handleDeleteProduct(product.id)}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -175,13 +243,19 @@ export const ProductList = () => {
             <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
             <p className="text-gray-500 mb-4">Get started by adding your first product.</p>
-            <Button>
+            <Button onClick={() => setShowAddForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Product
             </Button>
           </CardContent>
         </Card>
       )}
+
+      <AddProductForm 
+        open={showAddForm}
+        onOpenChange={setShowAddForm}
+        onProductAdded={fetchProducts}
+      />
     </div>
   );
 };

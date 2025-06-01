@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
+import { Plus, Search, TrendingUp, TrendingDown, ArrowUpDown, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AddTransactionForm } from './AddTransactionForm';
 
 interface Transaction {
   id: string;
@@ -27,6 +28,7 @@ export const TransactionList = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -66,6 +68,32 @@ export const TransactionList = () => {
     }
   };
 
+  const handleDeleteTransaction = async (transactionId: string) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Transaction Deleted",
+        description: "Transaction has been successfully deleted."
+      });
+
+      fetchTransactions();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message
+      });
+    }
+  };
+
   const filteredTransactions = transactions.filter(transaction => {
     const matchesSearch = transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          transaction.reference_number?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -92,7 +120,7 @@ export const TransactionList = () => {
           <h2 className="text-2xl font-bold">Transactions</h2>
           <p className="text-gray-600">Track your income and expenses</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Transaction
         </Button>
@@ -191,19 +219,28 @@ export const TransactionList = () => {
                     )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className={`font-bold ${
-                    transaction.type === 'income' ? 'text-green-600' : 
-                    transaction.type === 'expense' ? 'text-red-600' : 'text-blue-600'
-                  }`}>
-                    {transaction.type === 'expense' ? '-' : '+'}₦{Number(transaction.amount).toLocaleString()}
-                  </p>
-                  <Badge variant={
-                    transaction.type === 'income' ? 'default' : 
-                    transaction.type === 'expense' ? 'destructive' : 'secondary'
-                  }>
-                    {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
-                  </Badge>
+                <div className="flex items-center space-x-4">
+                  <div className="text-right">
+                    <p className={`font-bold ${
+                      transaction.type === 'income' ? 'text-green-600' : 
+                      transaction.type === 'expense' ? 'text-red-600' : 'text-blue-600'
+                    }`}>
+                      {transaction.type === 'expense' ? '-' : '+'}₦{Number(transaction.amount).toLocaleString()}
+                    </p>
+                    <Badge variant={
+                      transaction.type === 'income' ? 'default' : 
+                      transaction.type === 'expense' ? 'destructive' : 'secondary'
+                    }>
+                      {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                    </Badge>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => handleDeleteTransaction(transaction.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -217,13 +254,19 @@ export const TransactionList = () => {
             <ArrowUpDown className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
             <p className="text-gray-500 mb-4">Record your first transaction to get started.</p>
-            <Button>
+            <Button onClick={() => setShowAddForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Transaction
             </Button>
           </CardContent>
         </Card>
       )}
+
+      <AddTransactionForm 
+        open={showAddForm}
+        onOpenChange={setShowAddForm}
+        onTransactionAdded={fetchTransactions}
+      />
     </div>
   );
 };

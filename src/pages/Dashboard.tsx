@@ -15,9 +15,15 @@ import {
   FileText,
   Receipt
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
+import { AddProductForm } from '@/components/inventory/AddProductForm';
+import { CreateInvoiceForm } from '@/components/invoices/CreateInvoiceForm';
+import { AddTransactionForm } from '@/components/accounting/AddTransactionForm';
 
 export const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -28,6 +34,12 @@ export const Dashboard = () => {
     productCount: 0,
     lowStockItems: 0
   });
+
+  // Form states
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -95,6 +107,10 @@ export const Dashboard = () => {
     });
   };
 
+  const refreshStats = () => {
+    fetchDashboardStats();
+  };
+
   if (!businessProfile) {
     return <div>Loading...</div>;
   }
@@ -111,7 +127,7 @@ export const Dashboard = () => {
           <Badge variant="outline" className="px-3 py-1">
             {businessProfile.plans?.name?.toUpperCase()} Plan
           </Badge>
-          <Button>
+          <Button onClick={() => setShowCreateInvoice(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Quick Add
           </Button>
@@ -127,7 +143,7 @@ export const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₦{stats.totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">+12% from last month</p>
+            <p className="text-xs text-muted-foreground">From all transactions</p>
           </CardContent>
         </Card>
 
@@ -138,7 +154,7 @@ export const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₦{stats.monthlyProfit.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">+8% from last month</p>
+            <p className="text-xs text-muted-foreground">Revenue minus expenses</p>
           </CardContent>
         </Card>
 
@@ -182,15 +198,27 @@ export const Dashboard = () => {
                   <p className="font-medium text-orange-800">Low Stock Alert</p>
                   <p className="text-sm text-orange-600">{stats.lowStockItems} items need restocking</p>
                 </div>
-                <Button variant="outline" size="sm">View</Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => navigate('/dashboard/inventory')}
+                >
+                  View
+                </Button>
               </div>
             )}
             <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
               <div>
-                <p className="font-medium text-blue-800">Payment Reminder</p>
-                <p className="text-sm text-blue-600">2 invoices due this week</p>
+                <p className="font-medium text-blue-800">Business Growing</p>
+                <p className="text-sm text-blue-600">Your revenue is up this month!</p>
               </div>
-              <Button variant="outline" size="sm">View</Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate('/dashboard/reports')}
+              >
+                View Reports
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -202,25 +230,66 @@ export const Dashboard = () => {
             <CardDescription>Common tasks to get you started</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button variant="outline" className="w-full justify-start">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start"
+              onClick={() => setShowCreateInvoice(true)}
+            >
               <FileText className="h-4 w-4 mr-2" />
               Create Invoice
             </Button>
-            <Button variant="outline" className="w-full justify-start">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start"
+              onClick={() => setShowAddTransaction(true)}
+            >
               <Receipt className="h-4 w-4 mr-2" />
-              Record Payment
+              Record Transaction
             </Button>
-            <Button variant="outline" className="w-full justify-start">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start"
+              onClick={() => setShowAddProduct(true)}
+            >
               <Package className="h-4 w-4 mr-2" />
               Add Product
             </Button>
-            <Button variant="outline" className="w-full justify-start">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start"
+              onClick={() => setShowAddCustomer(true)}
+            >
               <Users className="h-4 w-4 mr-2" />
               Add Customer
             </Button>
           </CardContent>
         </Card>
       </div>
+
+      {/* Forms */}
+      <AddCustomerForm 
+        open={showAddCustomer}
+        onOpenChange={setShowAddCustomer}
+        onCustomerAdded={refreshStats}
+      />
+      
+      <AddProductForm 
+        open={showAddProduct}
+        onOpenChange={setShowAddProduct}
+        onProductAdded={refreshStats}
+      />
+      
+      <CreateInvoiceForm 
+        open={showCreateInvoice}
+        onOpenChange={setShowCreateInvoice}
+        onInvoiceCreated={refreshStats}
+      />
+      
+      <AddTransactionForm 
+        open={showAddTransaction}
+        onOpenChange={setShowAddTransaction}
+        onTransactionAdded={refreshStats}
+      />
     </div>
   );
 };

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, FileText, Eye, Edit, Send, DollarSign, Calendar, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { CreateInvoiceForm } from './CreateInvoiceForm';
 
 interface Invoice {
   id: string;
@@ -27,6 +28,7 @@ export const InvoiceList = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -66,6 +68,30 @@ export const InvoiceList = () => {
     }
   };
 
+  const updateInvoiceStatus = async (invoiceId: string, newStatus: 'paid' | 'unpaid' | 'part_paid') => {
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: newStatus })
+        .eq('id', invoiceId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Invoice Updated",
+        description: "Invoice status has been updated successfully."
+      });
+
+      fetchInvoices();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message
+      });
+    }
+  };
+
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          invoice.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -101,7 +127,7 @@ export const InvoiceList = () => {
           <h2 className="text-2xl font-bold">Invoices</h2>
           <p className="text-gray-600">Manage your sales invoices and payments</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowCreateForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Create Invoice
         </Button>
@@ -233,10 +259,24 @@ export const InvoiceList = () => {
                 </div>
 
                 {invoice.status !== 'paid' && (
-                  <div className="pt-3 border-t">
-                    <Button className="w-full" size="sm">
-                      Record Payment
+                  <div className="pt-3 border-t space-y-2">
+                    <Button 
+                      className="w-full" 
+                      size="sm"
+                      onClick={() => updateInvoiceStatus(invoice.id, 'paid')}
+                    >
+                      Mark as Paid
                     </Button>
+                    {invoice.status === 'unpaid' && (
+                      <Button 
+                        variant="outline" 
+                        className="w-full" 
+                        size="sm"
+                        onClick={() => updateInvoiceStatus(invoice.id, 'part_paid')}
+                      >
+                        Mark as Partially Paid
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -251,13 +291,19 @@ export const InvoiceList = () => {
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
             <p className="text-gray-500 mb-4">Create your first invoice to get started.</p>
-            <Button>
+            <Button onClick={() => setShowCreateForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Create Invoice
             </Button>
           </CardContent>
         </Card>
       )}
+
+      <CreateInvoiceForm 
+        open={showCreateForm}
+        onOpenChange={setShowCreateForm}
+        onInvoiceCreated={fetchInvoices}
+      />
     </div>
   );
 };

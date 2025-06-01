@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Users, Mail, Phone, MapPin, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AddCustomerForm } from './AddCustomerForm';
 
 interface Customer {
   id: string;
@@ -25,6 +26,7 @@ export const CustomerList = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -61,6 +63,32 @@ export const CustomerList = () => {
     }
   };
 
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!confirm('Are you sure you want to delete this customer?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Customer Deleted",
+        description: "Customer has been successfully deleted."
+      });
+
+      fetchCustomers();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message
+      });
+    }
+  };
+
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -79,7 +107,7 @@ export const CustomerList = () => {
           <h2 className="text-2xl font-bold">Customers</h2>
           <p className="text-gray-600">Manage your customer relationships</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Customer
         </Button>
@@ -154,7 +182,11 @@ export const CustomerList = () => {
                   <Button variant="ghost" size="sm">
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => handleDeleteCustomer(customer.id)}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -200,13 +232,19 @@ export const CustomerList = () => {
             <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
             <p className="text-gray-500 mb-4">Add your first customer to get started.</p>
-            <Button>
+            <Button onClick={() => setShowAddForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Customer
             </Button>
           </CardContent>
         </Card>
       )}
+
+      <AddCustomerForm 
+        open={showAddForm}
+        onOpenChange={setShowAddForm}
+        onCustomerAdded={fetchCustomers}
+      />
     </div>
   );
 };
