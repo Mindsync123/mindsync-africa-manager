@@ -141,6 +141,50 @@ export const BankingManager = () => {
     }
   };
 
+  const handleAddAccount = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    
+    const formData = new FormData(event.currentTarget);
+    const accountName = formData.get('accountName')?.toString() || '';
+    const accountType = formData.get('accountType')?.toString() || '';
+    const initialBalance = formData.get('initialBalance')?.toString() || '0';
+    
+    try {
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (!businessProfile) throw new Error('Business profile not found');
+
+      // Add to chart of accounts
+      const { error } = await supabase
+        .from('chart_of_accounts')
+        .insert({
+          business_id: businessProfile.id,
+          account_name: accountName,
+          account_type: 'Assets' // Bank and cash accounts are assets
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Account Added",
+        description: "Bank/cash account has been successfully added."
+      });
+
+      fetchBankAccounts();
+      setShowAddForm(false);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message
+      });
+    }
+  };
+
   const calculateBalance = (account: BankAccount) => {
     const accountTransactions = transactions.filter(t => t.bank_account_id === account.id);
     return accountTransactions.reduce((balance, transaction) => {
@@ -306,35 +350,37 @@ export const BankingManager = () => {
               Add a new bank account or cash account to track.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="accountName">Account Name *</Label>
-              <Input id="accountName" placeholder="e.g., GTBank Current Account" required />
+          <form onSubmit={handleAddAccount}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="accountName">Account Name *</Label>
+                <Input id="accountName" name="accountName" placeholder="e.g., GTBank Current Account" required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="accountType">Account Type *</Label>
+                <Select name="accountType" required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bank">Bank Account</SelectItem>
+                    <SelectItem value="cash">Cash Account</SelectItem>
+                    <SelectItem value="mobile_money">Mobile Money</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="initialBalance">Initial Balance</Label>
+                <Input id="initialBalance" name="initialBalance" type="number" step="0.01" placeholder="0.00" />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="accountType">Account Type *</Label>
-              <Select required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bank">Bank Account</SelectItem>
-                  <SelectItem value="cash">Cash Account</SelectItem>
-                  <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="initialBalance">Initial Balance</Label>
-              <Input id="initialBalance" type="number" step="0.01" placeholder="0.00" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">Add Account</Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Account</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

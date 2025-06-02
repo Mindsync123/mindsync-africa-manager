@@ -33,7 +33,7 @@ export const SubscriptionManager = () => {
     try {
       const { data: businessProfile } = await supabase
         .from('business_profiles')
-        .select('*, subscriptions(*), plans(*)')
+        .select('*, subscriptions(*)')
         .eq('user_id', user?.id)
         .single();
 
@@ -54,7 +54,7 @@ export const SubscriptionManager = () => {
         trial_days_left: trialDaysLeft,
         is_active: !!activeSubscription,
         next_payment_due: activeSubscription?.next_payment_due || '',
-        plan_name: businessProfile.plans?.name || 'Professional'
+        plan_name: 'Professional'
       };
 
       setSubscriptionInfo(subscriptionData);
