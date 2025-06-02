@@ -27,12 +27,15 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [transactionType, setTransactionType] = useState<string>('');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
+  const [transactionType, setTransactionType] = useState<'income' | 'expense'>('income');
 
   useEffect(() => {
     if (open) {
       fetchAccounts();
+      // Reset form
+      setSelectedAccount('');
+      setTransactionType('income');
     }
   }, [open]);
 
@@ -49,7 +52,8 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
       const { data, error } = await supabase
         .from('chart_of_accounts')
         .select('*')
-        .eq('business_id', businessProfile.id);
+        .eq('business_id', businessProfile.id)
+        .order('account_type, account_name');
 
       if (error) throw error;
       setAccounts(data || []);
@@ -77,11 +81,11 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
         .from('transactions')
         .insert({
           business_id: businessProfile.id,
-          type: transactionType as 'income' | 'expense' | 'transfer',
-          amount: Number(formData.get('amount')),
+          type: transactionType,
+          amount: Number(formData.get('amount')) || 0,
           date: formData.get('date')?.toString() || new Date().toISOString().split('T')[0],
           description: formData.get('description')?.toString() || '',
-          reference_number: formData.get('referenceNumber')?.toString() || '',
+          reference_number: formData.get('reference')?.toString() || '',
           category_id: selectedAccount || null
         });
 
@@ -94,8 +98,6 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
 
       onTransactionAdded();
       onOpenChange(false);
-      setTransactionType('');
-      setSelectedAccount('');
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -107,34 +109,60 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
     }
   };
 
+  // Filter accounts based on transaction type
+  const filteredAccounts = accounts.filter(account => {
+    if (transactionType === 'income') {
+      return account.account_type === 'Income' || account.account_type === 'Assets';
+    } else {
+      return account.account_type === 'Expenses' || account.account_type === 'Liabilities';
+    }
+  });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Add New Transaction</DialogTitle>
           <DialogDescription>
-            Record a new income, expense, or transfer transaction.
+            Record a new income or expense transaction.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="type">Transaction Type *</Label>
-              <Select value={transactionType} onValueChange={setTransactionType} required>
+              <Select value={transactionType} onValueChange={(value: 'income' | 'expense') => setTransactionType(value)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select transaction type" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="income">Income</SelectItem>
                   <SelectItem value="expense">Expense</SelectItem>
-                  <SelectItem value="transfer">Transfer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="account">Account *</Label>
+              <Select value={selectedAccount} onValueChange={setSelectedAccount} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.account_name} ({account.account_type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="amount">Amount (₦) *</Label>
               <Input id="amount" name="amount" type="number" step="0.01" required />
             </div>
+
             <div className="grid gap-2">
               <Label htmlFor="date">Date *</Label>
               <Input 
@@ -145,35 +173,22 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
                 required 
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="account">Account Category</Label>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.account_name} ({account.account_type})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="description">Description</Label>
               <Textarea id="description" name="description" placeholder="Transaction description" />
             </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="referenceNumber">Reference Number</Label>
-              <Input id="referenceNumber" name="referenceNumber" placeholder="Optional reference" />
+              <Label htmlFor="reference">Reference Number</Label>
+              <Input id="reference" name="reference" placeholder="Reference or receipt number" />
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !transactionType}>
+            <Button type="submit" disabled={loading}>
               {loading ? 'Adding...' : 'Add Transaction'}
             </Button>
           </DialogFooter>
