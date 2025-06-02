@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,7 +32,7 @@ export const SubscriptionManager = () => {
     try {
       const { data: businessProfile } = await supabase
         .from('business_profiles')
-        .select('*, subscriptions(*)')
+        .select('id, plan_id, created_at, subscriptions(*)')
         .eq('user_id', user?.id)
         .single();
 
@@ -73,7 +72,7 @@ export const SubscriptionManager = () => {
     try {
       const { data: businessProfile } = await supabase
         .from('business_profiles')
-        .select('id')
+        .select('id, plan_id')
         .eq('user_id', user?.id)
         .single();
 
