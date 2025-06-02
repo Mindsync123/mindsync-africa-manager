@@ -7,14 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, FileText, Eye, Edit, Send, DollarSign, Calendar, User } from 'lucide-react';
+import { Plus, Search, FileText, DollarSign, Calendar, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CreateInvoiceForm } from './CreateInvoiceForm';
+import { InvoiceActions } from './InvoiceActions';
+import { PartialPaymentDialog } from './PartialPaymentDialog';
 
 interface Invoice {
   id: string;
   invoice_number: string;
   total_amount: number;
+  amount_paid?: number;
   status: 'paid' | 'unpaid' | 'part_paid';
   due_date: string;
   created_at: string;
@@ -29,6 +32,7 @@ export const InvoiceList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -70,9 +74,22 @@ export const InvoiceList = () => {
 
   const updateInvoiceStatus = async (invoiceId: string, newStatus: 'paid' | 'unpaid' | 'part_paid') => {
     try {
+      const invoice = invoices.find(inv => inv.id === invoiceId);
+      if (!invoice) return;
+
+      if (newStatus === 'part_paid') {
+        setSelectedInvoiceForPayment(invoice);
+        return;
+      }
+
+      const updateData: any = { status: newStatus };
+      if (newStatus === 'paid') {
+        updateData.amount_paid = invoice.total_amount;
+      }
+
       const { error } = await supabase
         .from('invoices')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', invoiceId);
 
       if (error) throw error;
@@ -100,9 +117,7 @@ export const InvoiceList = () => {
   });
 
   const totalAmount = invoices.reduce((sum, inv) => sum + Number(inv.total_amount), 0);
-  const paidAmount = invoices
-    .filter(inv => inv.status === 'paid')
-    .reduce((sum, inv) => sum + Number(inv.total_amount), 0);
+  const paidAmount = invoices.reduce((sum, inv) => sum + (Number(inv.amount_paid) || 0), 0);
   const pendingAmount = totalAmount - paidAmount;
 
   const getStatusColor = (status: string) => {
@@ -213,17 +228,10 @@ export const InvoiceList = () => {
                     </CardDescription>
                   </div>
                 </div>
-                <div className="flex space-x-2">
-                  <Button variant="ghost" size="sm">
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
+                <InvoiceActions 
+                  invoice={invoice}
+                  onInvoiceUpdated={fetchInvoices}
+                />
               </div>
             </CardHeader>
             <CardContent>
@@ -232,6 +240,13 @@ export const InvoiceList = () => {
                   <span className="text-sm text-gray-500">Amount:</span>
                   <span className="font-bold text-lg">₦{Number(invoice.total_amount).toLocaleString()}</span>
                 </div>
+                
+                {Number(invoice.amount_paid) > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Paid:</span>
+                    <span className="font-bold text-green-600">₦{(Number(invoice.amount_paid) || 0).toLocaleString()}</span>
+                  </div>
+                )}
                 
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-500">Status:</span>
@@ -267,16 +282,14 @@ export const InvoiceList = () => {
                     >
                       Mark as Paid
                     </Button>
-                    {invoice.status === 'unpaid' && (
-                      <Button 
-                        variant="outline" 
-                        className="w-full" 
-                        size="sm"
-                        onClick={() => updateInvoiceStatus(invoice.id, 'part_paid')}
-                      >
-                        Mark as Partially Paid
-                      </Button>
-                    )}
+                    <Button 
+                      variant="outline" 
+                      className="w-full" 
+                      size="sm"
+                      onClick={() => updateInvoiceStatus(invoice.id, 'part_paid')}
+                    >
+                      Record Partial Payment
+                    </Button>
                   </div>
                 )}
               </div>
@@ -304,6 +317,15 @@ export const InvoiceList = () => {
         onOpenChange={setShowCreateForm}
         onInvoiceCreated={fetchInvoices}
       />
+
+      {selectedInvoiceForPayment && (
+        <PartialPaymentDialog 
+          open={!!selectedInvoiceForPayment}
+          onOpenChange={(open) => !open && setSelectedInvoiceForPayment(null)}
+          invoice={selectedInvoiceForPayment}
+          onPaymentRecorded={fetchInvoices}
+        />
+      )}
     </div>
   );
 };
