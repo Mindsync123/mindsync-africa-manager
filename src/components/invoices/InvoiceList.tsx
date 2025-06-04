@@ -21,7 +21,7 @@ interface Invoice {
   status: 'paid' | 'unpaid' | 'part_paid';
   due_date: string;
   created_at: string;
-  customers?: { name: string };
+  customers?: { name: string; phone?: string | null };
 }
 
 export const InvoiceList = () => {
@@ -54,7 +54,7 @@ export const InvoiceList = () => {
         .from('invoices')
         .select(`
           *,
-          customers(name)
+          customers(name, phone)
         `)
         .eq('business_id', businessProfile.id)
         .order('created_at', { ascending: false });

@@ -1,7 +1,8 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, Send, Download } from 'lucide-react';
+import { Eye, Edit, Send, Download, MessageCircle } from 'lucide-react';
+import { sendWhatsAppMessage } from '@/integrations/whatsapp/client';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceViewDialog } from './InvoiceViewDialog';
 import { EditInvoiceDialog } from './EditInvoiceDialog';
@@ -15,7 +16,7 @@ interface InvoiceActionsProps {
     amount_paid?: number;
     due_date: string;
     status: string;
-    customers?: { name: string };
+    customers?: { name: string; phone?: string | null };
   };
   onInvoiceUpdated: () => void;
 }
@@ -43,6 +44,33 @@ export const InvoiceActions = ({ invoice, onInvoiceUpdated }: InvoiceActionsProp
     }
   };
 
+  const handleWhatsApp = async () => {
+    const phone = invoice.customers?.phone;
+    if (!phone) {
+      toast({
+        variant: 'destructive',
+        title: 'No Phone Number',
+        description: 'Customer does not have a phone number.'
+      });
+      return;
+    }
+
+    const msg = `Invoice ${invoice.invoice_number}\nAmount: ₦${Number(invoice.total_amount).toLocaleString()}\nDue Date: ${new Date(invoice.due_date).toLocaleDateString()}`;
+    const { error } = await sendWhatsAppMessage(phone, msg);
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'WhatsApp Error',
+        description: error
+      });
+    } else {
+      toast({
+        title: 'Invoice Sent',
+        description: 'Invoice sent via WhatsApp.'
+      });
+    }
+  };
+
   const handleDownload = () => {
     toast({
       title: "Download Feature",
@@ -64,6 +92,9 @@ export const InvoiceActions = ({ invoice, onInvoiceUpdated }: InvoiceActionsProp
       </Button>
       <Button variant="ghost" size="sm" onClick={handleShare}>
         <Send className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="sm" onClick={handleWhatsApp}>
+        <MessageCircle className="h-4 w-4 text-green-600" />
       </Button>
       <Button variant="ghost" size="sm" onClick={handleDownload}>
         <Download className="h-4 w-4" />

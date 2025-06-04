@@ -59,6 +59,7 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- WhatsApp message integration using a simple API client
 
 ## How can I deploy this project?
 
