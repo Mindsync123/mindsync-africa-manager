@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -49,7 +48,7 @@ export const TransactionList = () => {
 
       if (!businessProfile) return;
 
-      // First, get transactions with category information
+      // Fetch transactions with category and bank account information
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
         .select(`
@@ -61,7 +60,9 @@ export const TransactionList = () => {
           reference_number,
           created_at,
           category_id,
-          category:chart_of_accounts!category_id(account_name)
+          bank_account_id,
+          category:chart_of_accounts!category_id(account_name),
+          bank_account:chart_of_accounts!bank_account_id(account_name)
         `)
         .eq('business_id', businessProfile.id)
         .order('date', { ascending: false });
@@ -72,7 +73,7 @@ export const TransactionList = () => {
       const transformedData = (transactionsData || []).map(transaction => ({
         ...transaction,
         category_name: transaction.category?.account_name || 'Uncategorized',
-        bank_account_name: null // We'll populate this separately if needed
+        bank_account_name: transaction.bank_account?.account_name || null
       }));
 
       setTransactions(transformedData);
@@ -219,6 +220,7 @@ export const TransactionList = () => {
                 <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Bank Account</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -237,6 +239,7 @@ export const TransactionList = () => {
                   <TableCell className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
                     ₦{Number(transaction.amount).toLocaleString()}
                   </TableCell>
+                  <TableCell>{transaction.bank_account_name || '-'}</TableCell>
                   <TableCell>{transaction.reference_number || '-'}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
@@ -253,7 +256,7 @@ export const TransactionList = () => {
               ))}
               {filteredTransactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                     No transactions found
                   </TableCell>
                 </TableRow>

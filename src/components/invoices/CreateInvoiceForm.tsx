@@ -26,6 +26,7 @@ interface Product {
   name: string;
   unit_price: number;
   stock_quantity: number;
+  purchase_cost: number;
 }
 
 interface InvoiceItem {
@@ -34,6 +35,7 @@ interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  purchaseCost: number;
 }
 
 export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: CreateInvoiceFormProps) => {
@@ -90,8 +92,9 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
 
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, unit_price, stock_quantity')
-        .eq('business_id', businessProfile.id);
+        .select('id, name, unit_price, stock_quantity, purchase_cost')
+        .eq('business_id', businessProfile.id)
+        .gt('stock_quantity', 0); // Only show products with stock
 
       if (error) throw error;
       setProducts(data || []);
@@ -106,7 +109,8 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
       productName: '',
       quantity: 1,
       unitPrice: 0,
-      total: 0
+      total: 0,
+      purchaseCost: 0
     }]);
   };
 
@@ -123,6 +127,7 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
       if (product) {
         updatedItems[index].productName = product.name;
         updatedItems[index].unitPrice = product.unit_price;
+        updatedItems[index].purchaseCost = product.purchase_cost || 0;
       }
     }
     
@@ -137,8 +142,28 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
     return invoiceItems.reduce((sum, item) => sum + item.total, 0);
   };
 
+  const validateStock = () => {
+    for (const item of invoiceItems) {
+      const product = products.find(p => p.id === item.productId);
+      if (product && item.quantity > product.stock_quantity) {
+        toast({
+          variant: "destructive",
+          title: "Insufficient Stock",
+          description: `Not enough stock for ${product.name}. Available: ${product.stock_quantity}, Required: ${item.quantity}`
+        });
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    
+    if (!validateStock()) {
+      return;
+    }
+    
     setLoading(true);
     
     try {
@@ -153,7 +178,8 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
       const invoiceNumber = `INV-${Date.now()}`;
       const totalAmount = getTotalAmount();
 
-      const { error: invoiceError } = await supabase
+      // Create invoice
+      const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
           business_id: businessProfile.id,
@@ -162,9 +188,27 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
           total_amount: totalAmount,
           due_date: dueDate,
           status: 'unpaid'
-        });
+        })
+        .select()
+        .single();
 
       if (invoiceError) throw invoiceError;
+
+      // Create invoice items
+      const invoiceItemsData = invoiceItems.map(item => ({
+        invoice_id: invoice.id,
+        product_id: item.productId,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_amount: item.total,
+        purchase_cost: item.purchaseCost
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(invoiceItemsData);
+
+      if (itemsError) throw itemsError;
 
       // Update stock quantities
       for (const item of invoiceItems) {
@@ -176,6 +220,17 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
               stock_quantity: product.stock_quantity - item.quantity 
             })
             .eq('id', item.productId);
+
+          // Record stock movement
+          await supabase
+            .from('stock_movements')
+            .insert({
+              product_id: item.productId,
+              type: 'out',
+              quantity: item.quantity,
+              reference_id: invoice.id,
+              notes: `Sale - Invoice ${invoiceNumber}`
+            });
         }
       }
 
@@ -209,6 +264,15 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
     } finally {
       setLoading(false);
     }
+  };
+
+  const getAvailableProducts = (currentProductId?: string) => {
+    return products.filter(product => {
+      // Show the currently selected product even if it's already used
+      if (product.id === currentProductId) return true;
+      // Don't show products that are already in the invoice
+      return !invoiceItems.some(item => item.productId === product.id);
+    });
   };
 
   return (
@@ -259,65 +323,76 @@ export const CreateInvoiceForm = ({ open, onOpenChange, onInvoiceCreated }: Crea
                 </Button>
               </div>
               
-              {invoiceItems.map((item, index) => (
-                <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border rounded-lg">
-                  <div className="col-span-4">
-                    <Label>Product</Label>
-                    <Select 
-                      value={item.productId} 
-                      onValueChange={(value) => updateInvoiceItem(index, 'productId', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} (Stock: {product.stock_quantity})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {invoiceItems.map((item, index) => {
+                const availableProducts = getAvailableProducts(item.productId);
+                const selectedProduct = products.find(p => p.id === item.productId);
+                
+                return (
+                  <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border rounded-lg">
+                    <div className="col-span-4">
+                      <Label>Product</Label>
+                      <Select 
+                        value={item.productId} 
+                        onValueChange={(value) => updateInvoiceItem(index, 'productId', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableProducts.map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} (Stock: {product.stock_quantity})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Quantity</Label>
+                      <Input 
+                        type="number" 
+                        value={item.quantity}
+                        onChange={(e) => updateInvoiceItem(index, 'quantity', Number(e.target.value))}
+                        min="1"
+                        max={selectedProduct?.stock_quantity || 999}
+                      />
+                      {selectedProduct && item.quantity > selectedProduct.stock_quantity && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Exceeds available stock ({selectedProduct.stock_quantity})
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Unit Price</Label>
+                      <Input 
+                        type="number" 
+                        value={item.unitPrice}
+                        onChange={(e) => updateInvoiceItem(index, 'unitPrice', Number(e.target.value))}
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Total</Label>
+                      <Input 
+                        type="number" 
+                        value={item.total}
+                        readOnly
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Button 
+                        type="button" 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => removeInvoiceItem(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <Label>Quantity</Label>
-                    <Input 
-                      type="number" 
-                      value={item.quantity}
-                      onChange={(e) => updateInvoiceItem(index, 'quantity', Number(e.target.value))}
-                      min="1"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label>Unit Price</Label>
-                    <Input 
-                      type="number" 
-                      value={item.unitPrice}
-                      onChange={(e) => updateInvoiceItem(index, 'unitPrice', Number(e.target.value))}
-                      step="0.01"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label>Total</Label>
-                    <Input 
-                      type="number" 
-                      value={item.total}
-                      readOnly
-                      step="0.01"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Button 
-                      type="button" 
-                      variant="destructive" 
-                      size="sm"
-                      onClick={() => removeInvoiceItem(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="text-right">

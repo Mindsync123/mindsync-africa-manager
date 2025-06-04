@@ -531,6 +531,7 @@ export type Database = {
       transactions: {
         Row: {
           amount: number
+          bank_account_id: string | null
           business_id: string
           category_id: string | null
           created_at: string | null
@@ -542,6 +543,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          bank_account_id?: string | null
           business_id: string
           category_id?: string | null
           created_at?: string | null
@@ -553,6 +555,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          bank_account_id?: string | null
           business_id?: string
           category_id?: string | null
           created_at?: string | null
@@ -563,6 +566,13 @@ export type Database = {
           type?: Database["public"]["Enums"]["transaction_type"]
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_business_id_fkey"
             columns: ["business_id"]
