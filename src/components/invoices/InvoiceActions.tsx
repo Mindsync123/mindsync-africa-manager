@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Eye, Edit, Send, Download, MessageCircle } from 'lucide-react';
 import { sendWhatsAppMessage } from '@/integrations/whatsapp/client';
 import { useToast } from '@/hooks/use-toast';
+import { generateInvoiceText } from '@/lib/invoice';
 import { InvoiceViewDialog } from './InvoiceViewDialog';
 import { EditInvoiceDialog } from './EditInvoiceDialog';
 import { PartialPaymentDialog } from './PartialPaymentDialog';
@@ -27,20 +28,40 @@ export const InvoiceActions = ({ invoice, onInvoiceUpdated }: InvoiceActionsProp
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
 
-  const handleShare = () => {
+  const handleShare = async () => {
     const shareText = `Invoice ${invoice.invoice_number}\nAmount: ₦${Number(invoice.total_amount).toLocaleString()}\nDue Date: ${new Date(invoice.due_date).toLocaleDateString()}`;
-    
+
     if (navigator.share) {
-      navigator.share({
-        title: `Invoice ${invoice.invoice_number}`,
-        text: shareText,
-      });
+      try {
+        await navigator.share({
+          title: `Invoice ${invoice.invoice_number}`,
+          text: shareText
+        });
+        toast({
+          title: 'Invoice Shared',
+          description: 'Invoice details shared successfully.'
+        });
+      } catch (err) {
+        toast({
+          variant: 'destructive',
+          title: 'Share Failed',
+          description: 'Unable to share invoice.'
+        });
+      }
     } else {
-      navigator.clipboard.writeText(shareText);
-      toast({
-        title: "Invoice Details Copied",
-        description: "Invoice details have been copied to clipboard."
-      });
+      try {
+        await navigator.clipboard.writeText(shareText);
+        toast({
+          title: 'Invoice Details Copied',
+          description: 'Invoice details have been copied to clipboard.'
+        });
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'Copy Failed',
+          description: 'Failed to copy invoice details.'
+        });
+      }
     }
   };
 
@@ -72,9 +93,18 @@ export const InvoiceActions = ({ invoice, onInvoiceUpdated }: InvoiceActionsProp
   };
 
   const handleDownload = () => {
+    const content = generateInvoiceText(invoice);
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${invoice.invoice_number}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
     toast({
-      title: "Download Feature",
-      description: "PDF download feature will be implemented soon."
+      title: 'Invoice Downloaded',
+      description: 'Invoice has been downloaded.'
     });
   };
 
