@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface Transaction {
   id: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'transfer';
   amount: number;
   date: string;
   description: string;
@@ -49,24 +49,30 @@ export const TransactionList = () => {
 
       if (!businessProfile) return;
 
-      // Fetch transactions with category and bank account names using joins
-      const { data, error } = await supabase
+      // First, get transactions with category information
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
         .select(`
-          *,
-          category:chart_of_accounts!category_id(account_name),
-          bank_account:chart_of_accounts!bank_account_id(account_name)
+          id,
+          type,
+          amount,
+          date,
+          description,
+          reference_number,
+          created_at,
+          category_id,
+          category:chart_of_accounts!category_id(account_name)
         `)
         .eq('business_id', businessProfile.id)
         .order('date', { ascending: false });
 
-      if (error) throw error;
+      if (transactionsError) throw transactionsError;
 
       // Transform the data to flatten the joined fields
-      const transformedData = (data || []).map(transaction => ({
+      const transformedData = (transactionsData || []).map(transaction => ({
         ...transaction,
         category_name: transaction.category?.account_name || 'Uncategorized',
-        bank_account_name: transaction.bank_account?.account_name || null
+        bank_account_name: null // We'll populate this separately if needed
       }));
 
       setTransactions(transformedData);
@@ -213,7 +219,6 @@ export const TransactionList = () => {
                 <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Bank Account</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -232,7 +237,6 @@ export const TransactionList = () => {
                   <TableCell className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
                     ₦{Number(transaction.amount).toLocaleString()}
                   </TableCell>
-                  <TableCell>{transaction.bank_account_name || '-'}</TableCell>
                   <TableCell>{transaction.reference_number || '-'}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
@@ -249,7 +253,7 @@ export const TransactionList = () => {
               ))}
               {filteredTransactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                     No transactions found
                   </TableCell>
                 </TableRow>
