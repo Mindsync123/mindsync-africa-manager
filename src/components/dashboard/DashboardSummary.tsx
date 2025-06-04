@@ -51,21 +51,26 @@ export const DashboardSummary = () => {
       // Fetch actual revenue from invoices (amount_paid only)
       const { data: invoices } = await supabase
         .from('invoices')
-        .select('total_amount, amount_paid, status')
+        .select('id, total_amount, amount_paid, status')
         .eq('business_id', businessProfile.id);
 
       const totalRevenue = (invoices || []).reduce((sum, inv) => sum + (Number(inv.amount_paid) || 0), 0);
       const totalInvoices = invoices?.length || 0;
       const pendingInvoices = (invoices || []).filter(inv => inv.status === 'unpaid' || inv.status === 'part_paid').length;
 
-      // Calculate COGS from actual invoice items
-      const { data: invoiceItems } = await supabase
-        .from('invoice_items')
-        .select('quantity, purchase_cost')
-        .in('invoice_id', (invoices || []).filter(inv => inv.status === 'paid' || inv.amount_paid > 0).map(inv => inv.id));
+      // Calculate COGS from actual invoice items for paid/partially paid invoices
+      const paidInvoiceIds = (invoices || []).filter(inv => inv.status === 'paid' || Number(inv.amount_paid) > 0).map(inv => inv.id);
+      
+      let totalCOGS = 0;
+      if (paidInvoiceIds.length > 0) {
+        const { data: invoiceItems } = await supabase
+          .from('invoice_items')
+          .select('quantity, purchase_cost')
+          .in('invoice_id', paidInvoiceIds);
 
-      const totalCOGS = (invoiceItems || []).reduce((sum, item) => 
-        sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0);
+        totalCOGS = (invoiceItems || []).reduce((sum, item) => 
+          sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0);
+      }
 
       // Fetch actual expenses from transactions
       const { data: transactions } = await supabase
@@ -73,9 +78,11 @@ export const DashboardSummary = () => {
         .select('amount, type')
         .eq('business_id', businessProfile.id);
 
-      const totalExpenses = (transactions || [])
+      const operatingExpenses = (transactions || [])
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      const totalExpenses = operatingExpenses + totalCOGS;
 
       // Fetch customers count
       const { count: customersCount } = await supabase
@@ -96,8 +103,8 @@ export const DashboardSummary = () => {
 
       setStats({
         totalRevenue,
-        totalExpenses: totalExpenses + totalCOGS, // Include COGS in total expenses
-        netProfit: totalRevenue - (totalExpenses + totalCOGS),
+        totalExpenses,
+        netProfit: totalRevenue - totalExpenses,
         totalCustomers: customersCount || 0,
         totalProducts,
         totalInvoices,

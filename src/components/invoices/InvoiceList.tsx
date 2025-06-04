@@ -323,7 +323,7 @@ export const InvoiceList = () => {
           open={!!selectedInvoiceForPayment}
           onOpenChange={(open) => !open && setSelectedInvoiceForPayment(null)}
           invoice={selectedInvoiceForPayment}
-          onPaymentRecorded={fetchInvoices}
+          onPaymentUpdated={fetchInvoices}
         />
       )}
     </div>
