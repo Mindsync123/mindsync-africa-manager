@@ -48,40 +48,45 @@ export const DashboardSummary = () => {
 
       if (!businessProfile) return;
 
-      // Fetch actual revenue from invoices (amount_paid only)
+      // Calculate actual revenue from paid invoices only
       const { data: invoices } = await supabase
         .from('invoices')
         .select('id, total_amount, amount_paid, status')
         .eq('business_id', businessProfile.id);
 
+      // Revenue = sum of amount_paid from all invoices (actual cash received)
       const totalRevenue = (invoices || []).reduce((sum, inv) => sum + (Number(inv.amount_paid) || 0), 0);
       const totalInvoices = invoices?.length || 0;
       const pendingInvoices = (invoices || []).filter(inv => inv.status === 'unpaid' || inv.status === 'part_paid').length;
 
-      // Calculate COGS from actual invoice items for paid/partially paid invoices
-      const paidInvoiceIds = (invoices || []).filter(inv => inv.status === 'paid' || Number(inv.amount_paid) > 0).map(inv => inv.id);
-      
+      // Calculate COGS only from actual sold items with purchase costs
       let totalCOGS = 0;
+      const paidInvoiceIds = (invoices || []).filter(inv => Number(inv.amount_paid) > 0).map(inv => inv.id);
+      
       if (paidInvoiceIds.length > 0) {
         const { data: invoiceItems } = await supabase
           .from('invoice_items')
           .select('quantity, purchase_cost')
           .in('invoice_id', paidInvoiceIds);
 
-        totalCOGS = (invoiceItems || []).reduce((sum, item) => 
-          sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0);
+        // COGS = sum of (quantity × purchase_cost) for items that were actually sold
+        totalCOGS = (invoiceItems || []).reduce((sum, item) => {
+          const purchaseCost = Number(item.purchase_cost) || 0;
+          const quantity = Number(item.quantity) || 0;
+          return sum + (quantity * purchaseCost);
+        }, 0);
       }
 
-      // Fetch actual expenses from transactions
-      const { data: transactions } = await supabase
+      // Calculate operating expenses from expense transactions
+      const { data: expenseTransactions } = await supabase
         .from('transactions')
-        .select('amount, type')
-        .eq('business_id', businessProfile.id);
+        .select('amount')
+        .eq('business_id', businessProfile.id)
+        .eq('type', 'expense');
 
-      const operatingExpenses = (transactions || [])
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-
+      const operatingExpenses = (expenseTransactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+      
+      // Total expenses = Operating expenses + COGS
       const totalExpenses = operatingExpenses + totalCOGS;
 
       // Fetch customers count
@@ -130,18 +135,29 @@ export const DashboardSummary = () => {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">₦{stats.totalRevenue.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">From actual payments received</p>
+          <p className="text-xs text-muted-foreground">Cash received from customers</p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+          <CardTitle className="text-sm font-medium">Cost of Goods Sold</CardTitle>
+          <Package className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-orange-600">₦{stats.totalCOGS.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Cost of items sold</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Operating Expenses</CardTitle>
           <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-red-600">₦{stats.totalExpenses.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">Including COGS: ₦{stats.totalCOGS.toLocaleString()}</p>
+          <div className="text-2xl font-bold text-red-600">₦{(stats.totalExpenses - stats.totalCOGS).toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">Business operating costs</p>
         </CardContent>
       </Card>
 
@@ -199,17 +215,6 @@ export const DashboardSummary = () => {
         <CardContent>
           <div className="text-2xl font-bold text-orange-600">{stats.lowStockProducts}</div>
           <p className="text-xs text-muted-foreground">Products need restock</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
-          <CreditCard className="h-4 w-4 text-orange-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-orange-600">{stats.pendingInvoices}</div>
-          <p className="text-xs text-muted-foreground">Unpaid/partial invoices</p>
         </CardContent>
       </Card>
     </div>

@@ -27,14 +27,18 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<ChartAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>('');
+  const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
   const [transactionType, setTransactionType] = useState<'income' | 'expense'>('income');
 
   useEffect(() => {
     if (open) {
       fetchAccounts();
+      fetchBankAccounts();
       // Reset form
       setSelectedAccount('');
+      setSelectedBankAccount('');
       setTransactionType('income');
     }
   }, [open]);
@@ -62,6 +66,31 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
     }
   };
 
+  const fetchBankAccounts = async () => {
+    try {
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (!businessProfile) return;
+
+      const { data, error } = await supabase
+        .from('chart_of_accounts')
+        .select('*')
+        .eq('business_id', businessProfile.id)
+        .eq('account_type', 'Assets')
+        .or('account_name.ilike.%bank%,account_name.ilike.%cash%')
+        .order('account_name');
+
+      if (error) throw error;
+      setBankAccounts(data || []);
+    } catch (error: any) {
+      console.error('Error fetching bank accounts:', error);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
@@ -77,6 +106,11 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
 
       if (!businessProfile) throw new Error('Business profile not found');
 
+      // For expenses, we need to ensure a bank account is selected
+      if (transactionType === 'expense' && !selectedBankAccount) {
+        throw new Error('Please select which account the money was paid from');
+      }
+
       const { error } = await supabase
         .from('transactions')
         .insert({
@@ -86,14 +120,15 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
           date: formData.get('date')?.toString() || new Date().toISOString().split('T')[0],
           description: formData.get('description')?.toString() || '',
           reference_number: formData.get('reference')?.toString() || '',
-          category_id: selectedAccount || null
+          category_id: selectedAccount || null,
+          bank_account_id: transactionType === 'expense' ? selectedBankAccount : null
         });
 
       if (error) throw error;
 
       toast({
         title: "Transaction Added",
-        description: "Transaction has been successfully recorded."
+        description: `${transactionType === 'income' ? 'Income' : 'Expense'} transaction has been successfully recorded.`
       });
 
       onTransactionAdded();
@@ -112,9 +147,9 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
   // Filter accounts based on transaction type
   const filteredAccounts = accounts.filter(account => {
     if (transactionType === 'income') {
-      return account.account_type === 'Income' || account.account_type === 'Assets';
+      return account.account_type === 'Income';
     } else {
-      return account.account_type === 'Expenses' || account.account_type === 'Liabilities';
+      return account.account_type === 'Expenses';
     }
   });
 
@@ -124,7 +159,7 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
         <DialogHeader>
           <DialogTitle>Add New Transaction</DialogTitle>
           <DialogDescription>
-            Record a new income or expense transaction.
+            Record a new income or expense transaction with proper account tracking.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -143,20 +178,39 @@ export const AddTransactionForm = ({ open, onOpenChange, onTransactionAdded }: A
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="account">Account *</Label>
+              <Label htmlFor="account">{transactionType === 'income' ? 'Income Category' : 'Expense Category'} *</Label>
               <Select value={selectedAccount} onValueChange={setSelectedAccount} required>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select account" />
+                  <SelectValue placeholder={`Select ${transactionType} category`} />
                 </SelectTrigger>
                 <SelectContent>
                   {filteredAccounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      {account.account_name} ({account.account_type})
+                      {account.account_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {transactionType === 'expense' && (
+              <div className="grid gap-2">
+                <Label htmlFor="bankAccount">Paid From Account *</Label>
+                <Select value={selectedBankAccount} onValueChange={setSelectedBankAccount} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select bank/cash account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">Which account was the money paid from?</p>
+              </div>
+            )}
 
             <div className="grid gap-2">
               <Label htmlFor="amount">Amount (₦) *</Label>
