@@ -148,6 +148,54 @@ export type Database = {
           },
         ]
       }
+      invoice_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          invoice_id: string
+          product_id: string
+          purchase_cost: number | null
+          quantity: number
+          total_amount: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          invoice_id: string
+          product_id: string
+          purchase_cost?: number | null
+          quantity: number
+          total_amount: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          invoice_id?: string
+          product_id?: string
+          purchase_cost?: number | null
+          quantity?: number
+          total_amount?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_payments: {
         Row: {
           amount_paid: number
@@ -304,6 +352,7 @@ export type Database = {
           created_at: string | null
           id: string
           name: string
+          purchase_cost: number | null
           reorder_level: number | null
           sku: string | null
           stock_quantity: number | null
@@ -317,6 +366,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           name: string
+          purchase_cost?: number | null
           reorder_level?: number | null
           sku?: string | null
           stock_quantity?: number | null
@@ -330,6 +380,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           name?: string
+          purchase_cost?: number | null
           reorder_level?: number | null
           sku?: string | null
           stock_quantity?: number | null

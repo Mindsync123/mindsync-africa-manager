@@ -63,23 +63,21 @@ export const BankingManager = () => {
 
       if (!businessProfile) return;
 
-      // Note: This would need a bank_accounts table to be created
-      // For now, we'll use chart_of_accounts with specific types
       const { data, error } = await supabase
         .from('chart_of_accounts')
         .select('*')
         .eq('business_id', businessProfile.id)
-        .in('account_name', ['Cash on Hand', 'Bank Account'])
+        .eq('account_type', 'Assets')
+        .or('account_name.ilike.%bank%,account_name.ilike.%cash%')
         .order('account_name');
 
       if (error) throw error;
 
-      // Transform to bank account format
       const bankAccountData = (data || []).map(account => ({
         id: account.id,
         account_name: account.account_name,
-        account_type: account.account_name === 'Cash on Hand' ? 'cash' as const : 'bank' as const,
-        balance: 0, // This would come from transaction summaries
+        account_type: account.account_name.toLowerCase().includes('cash') ? 'cash' as const : 'bank' as const,
+        balance: 0,
         currency: '₦',
         created_at: account.created_at
       }));
@@ -89,6 +87,7 @@ export const BankingManager = () => {
         setSelectedAccount(bankAccountData[0]);
       }
     } catch (error: any) {
+      console.error('Error fetching bank accounts:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -109,7 +108,6 @@ export const BankingManager = () => {
 
       if (!businessProfile) return;
 
-      // Fetch transactions related to this account
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
@@ -119,7 +117,6 @@ export const BankingManager = () => {
 
       if (error) throw error;
 
-      // Transform to bank transaction format
       const bankTransactionData = (data || []).map(transaction => ({
         id: transaction.id,
         bank_account_id: accountId,
@@ -133,6 +130,7 @@ export const BankingManager = () => {
 
       setTransactions(bankTransactionData);
     } catch (error: any) {
+      console.error('Error fetching transactions:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -146,8 +144,6 @@ export const BankingManager = () => {
     
     const formData = new FormData(event.currentTarget);
     const accountName = formData.get('accountName')?.toString() || '';
-    const accountType = formData.get('accountType')?.toString() || '';
-    const initialBalance = formData.get('initialBalance')?.toString() || '0';
     
     try {
       const { data: businessProfile } = await supabase
@@ -158,13 +154,12 @@ export const BankingManager = () => {
 
       if (!businessProfile) throw new Error('Business profile not found');
 
-      // Add to chart of accounts
       const { error } = await supabase
         .from('chart_of_accounts')
         .insert({
           business_id: businessProfile.id,
           account_name: accountName,
-          account_type: 'Assets' // Bank and cash accounts are assets
+          account_type: 'Assets'
         });
 
       if (error) throw error;
@@ -177,6 +172,7 @@ export const BankingManager = () => {
       fetchBankAccounts();
       setShowAddForm(false);
     } catch (error: any) {
+      console.error('Error adding account:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -220,7 +216,6 @@ export const BankingManager = () => {
         </Button>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -261,7 +256,6 @@ export const BankingManager = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Account List */}
         <Card>
           <CardHeader>
             <CardTitle>Accounts</CardTitle>
@@ -269,34 +263,37 @@ export const BankingManager = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {bankAccounts.map((account) => (
-                <div 
-                  key={account.id} 
-                  className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
-                    selectedAccount?.id === account.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedAccount(account)}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="text-blue-500">
-                      {getAccountIcon(account.account_type)}
+              {bankAccounts.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No accounts created yet</p>
+              ) : (
+                bankAccounts.map((account) => (
+                  <div 
+                    key={account.id} 
+                    className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                      selectedAccount?.id === account.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedAccount(account)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="text-blue-500">
+                        {getAccountIcon(account.account_type)}
+                      </div>
+                      <div>
+                        <p className="font-medium">{account.account_name}</p>
+                        <p className="text-sm text-gray-500 capitalize">{account.account_type.replace('_', ' ')}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{account.account_name}</p>
-                      <p className="text-sm text-gray-500 capitalize">{account.account_type.replace('_', ' ')}</p>
+                    <div className="text-right">
+                      <p className="font-bold">₦{calculateBalance(account).toLocaleString()}</p>
+                      <Badge variant="outline">{account.currency}</Badge>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold">₦{calculateBalance(account).toLocaleString()}</p>
-                    <Badge variant="outline">{account.currency}</Badge>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Transaction History */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -341,7 +338,6 @@ export const BankingManager = () => {
         </Card>
       </div>
 
-      {/* Add Account Dialog */}
       <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -355,23 +351,6 @@ export const BankingManager = () => {
               <div className="grid gap-2">
                 <Label htmlFor="accountName">Account Name *</Label>
                 <Input id="accountName" name="accountName" placeholder="e.g., GTBank Current Account" required />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="accountType">Account Type *</Label>
-                <Select name="accountType" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bank">Bank Account</SelectItem>
-                    <SelectItem value="cash">Cash Account</SelectItem>
-                    <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="initialBalance">Initial Balance</Label>
-                <Input id="initialBalance" name="initialBalance" type="number" step="0.01" placeholder="0.00" />
               </div>
             </div>
             <DialogFooter>

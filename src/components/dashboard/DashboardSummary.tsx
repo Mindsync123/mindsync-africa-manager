@@ -14,6 +14,7 @@ interface DashboardStats {
   totalInvoices: number;
   pendingInvoices: number;
   lowStockProducts: number;
+  totalCOGS: number;
 }
 
 export const DashboardSummary = () => {
@@ -26,7 +27,8 @@ export const DashboardSummary = () => {
     totalProducts: 0,
     totalInvoices: 0,
     pendingInvoices: 0,
-    lowStockProducts: 0
+    lowStockProducts: 0,
+    totalCOGS: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -46,7 +48,7 @@ export const DashboardSummary = () => {
 
       if (!businessProfile) return;
 
-      // Fetch revenue from invoices (amount_paid)
+      // Fetch actual revenue from invoices (amount_paid only)
       const { data: invoices } = await supabase
         .from('invoices')
         .select('total_amount, amount_paid, status')
@@ -54,9 +56,18 @@ export const DashboardSummary = () => {
 
       const totalRevenue = (invoices || []).reduce((sum, inv) => sum + (Number(inv.amount_paid) || 0), 0);
       const totalInvoices = invoices?.length || 0;
-      const pendingInvoices = (invoices || []).filter(inv => inv.status !== 'paid').length;
+      const pendingInvoices = (invoices || []).filter(inv => inv.status === 'unpaid' || inv.status === 'part_paid').length;
 
-      // Fetch expenses from transactions
+      // Calculate COGS from actual invoice items
+      const { data: invoiceItems } = await supabase
+        .from('invoice_items')
+        .select('quantity, purchase_cost')
+        .in('invoice_id', (invoices || []).filter(inv => inv.status === 'paid' || inv.amount_paid > 0).map(inv => inv.id));
+
+      const totalCOGS = (invoiceItems || []).reduce((sum, item) => 
+        sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0);
+
+      // Fetch actual expenses from transactions
       const { data: transactions } = await supabase
         .from('transactions')
         .select('amount, type')
@@ -85,13 +96,14 @@ export const DashboardSummary = () => {
 
       setStats({
         totalRevenue,
-        totalExpenses,
-        netProfit: totalRevenue - totalExpenses,
+        totalExpenses: totalExpenses + totalCOGS, // Include COGS in total expenses
+        netProfit: totalRevenue - (totalExpenses + totalCOGS),
         totalCustomers: customersCount || 0,
         totalProducts,
         totalInvoices,
         pendingInvoices,
-        lowStockProducts
+        lowStockProducts,
+        totalCOGS
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -111,7 +123,7 @@ export const DashboardSummary = () => {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">₦{stats.totalRevenue.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">From paid invoices</p>
+          <p className="text-xs text-muted-foreground">From actual payments received</p>
         </CardContent>
       </Card>
 
@@ -122,7 +134,7 @@ export const DashboardSummary = () => {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-red-600">₦{stats.totalExpenses.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">Business expenses</p>
+          <p className="text-xs text-muted-foreground">Including COGS: ₦{stats.totalCOGS.toLocaleString()}</p>
         </CardContent>
       </Card>
 
@@ -135,7 +147,7 @@ export const DashboardSummary = () => {
           <div className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             ₦{stats.netProfit.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">Revenue - Expenses</p>
+          <p className="text-xs text-muted-foreground">Revenue - Total Expenses</p>
         </CardContent>
       </Card>
 
@@ -190,7 +202,7 @@ export const DashboardSummary = () => {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-orange-600">{stats.pendingInvoices}</div>
-          <p className="text-xs text-muted-foreground">Unpaid invoices</p>
+          <p className="text-xs text-muted-foreground">Unpaid/partial invoices</p>
         </CardContent>
       </Card>
     </div>

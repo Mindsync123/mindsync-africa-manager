@@ -17,25 +17,26 @@ interface PartialPaymentDialogProps {
     total_amount: number;
     amount_paid?: number;
   };
-  onPaymentRecorded: () => void;
+  onPaymentUpdated: () => void;
 }
 
-export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRecorded }: PartialPaymentDialogProps) => {
+export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentUpdated }: PartialPaymentDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [amountPaid, setAmountPaid] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [notes, setNotes] = useState('');
 
-  const remainingAmount = Number(invoice.total_amount) - (Number(invoice.amount_paid) || 0);
+  const remainingAmount = Number(invoice.total_amount) - Number(invoice.amount_paid || 0);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
 
     try {
-      const paymentAmount = Number(amountPaid);
+      const amount = Number(paymentAmount);
       
-      if (paymentAmount <= 0 || paymentAmount > remainingAmount) {
+      if (amount <= 0 || amount > remainingAmount) {
         throw new Error('Invalid payment amount');
       }
 
@@ -44,19 +45,21 @@ export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRec
         .from('invoice_payments')
         .insert({
           invoice_id: invoice.id,
-          amount_paid: paymentAmount,
-          payment_method: paymentMethod
+          amount_paid: amount,
+          payment_method: paymentMethod,
+          notes: notes,
+          payment_date: new Date().toISOString().split('T')[0]
         });
 
       if (paymentError) throw paymentError;
 
-      // Update the invoice
-      const newAmountPaid = (Number(invoice.amount_paid) || 0) + paymentAmount;
+      // Update invoice amount_paid and status
+      const newAmountPaid = Number(invoice.amount_paid || 0) + amount;
       const newStatus = newAmountPaid >= Number(invoice.total_amount) ? 'paid' : 'part_paid';
 
       const { error: invoiceError } = await supabase
         .from('invoices')
-        .update({ 
+        .update({
           amount_paid: newAmountPaid,
           status: newStatus
         })
@@ -66,14 +69,16 @@ export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRec
 
       toast({
         title: "Payment Recorded",
-        description: `Payment of ₦${paymentAmount.toLocaleString()} has been recorded.`
+        description: `Payment of ₦${amount.toLocaleString()} has been recorded successfully.`
       });
 
-      onPaymentRecorded();
+      onPaymentUpdated();
       onOpenChange(false);
-      setAmountPaid('');
+      setPaymentAmount('');
       setPaymentMethod('');
+      setNotes('');
     } catch (error: any) {
+      console.error('Error recording payment:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -88,7 +93,7 @@ export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRec
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Record Partial Payment</DialogTitle>
+          <DialogTitle>Record Payment</DialogTitle>
           <DialogDescription>
             Record a payment for invoice {invoice.invoice_number}
           </DialogDescription>
@@ -97,25 +102,25 @@ export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRec
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label>Invoice Total: ₦{Number(invoice.total_amount).toLocaleString()}</Label>
-              <Label>Already Paid: ₦{(Number(invoice.amount_paid) || 0).toLocaleString()}</Label>
+              <Label>Amount Paid: ₦{Number(invoice.amount_paid || 0).toLocaleString()}</Label>
               <Label>Remaining: ₦{remainingAmount.toLocaleString()}</Label>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="amountPaid">Payment Amount *</Label>
+              <Label htmlFor="paymentAmount">Payment Amount *</Label>
               <Input 
-                id="amountPaid" 
+                id="paymentAmount" 
                 type="number"
                 step="0.01"
                 max={remainingAmount}
-                value={amountPaid}
-                onChange={(e) => setAmountPaid(e.target.value)}
-                placeholder="0.00"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="Enter payment amount"
                 required 
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="paymentMethod">Payment Method</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Label htmlFor="paymentMethod">Payment Method *</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
@@ -124,9 +129,18 @@ export const PartialPaymentDialog = ({ open, onOpenChange, invoice, onPaymentRec
                   <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                   <SelectItem value="card">Card Payment</SelectItem>
                   <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Input 
+                id="notes" 
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Payment reference or notes"
+              />
             </div>
           </div>
           <DialogFooter>

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Plus, Search, Archive, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChartAccount {
@@ -19,41 +19,6 @@ interface ChartAccount {
   parent_id?: string;
   created_at: string;
 }
-
-const DEFAULT_ACCOUNTS = [
-  // Assets
-  { name: 'Cash on Hand', type: 'Assets' },
-  { name: 'Bank Account', type: 'Assets' },
-  { name: 'Accounts Receivable', type: 'Assets' },
-  { name: 'Inventory', type: 'Assets' },
-  { name: 'Equipment', type: 'Assets' },
-  { name: 'Prepaid Expenses', type: 'Assets' },
-  
-  // Liabilities
-  { name: 'Accounts Payable', type: 'Liabilities' },
-  { name: 'Bank Loans', type: 'Liabilities' },
-  { name: 'Credit Cards', type: 'Liabilities' },
-  { name: 'Accrued Expenses', type: 'Liabilities' },
-  
-  // Income
-  { name: 'Product Sales', type: 'Income' },
-  { name: 'Service Revenue', type: 'Income' },
-  { name: 'Other Income', type: 'Income' },
-  { name: 'Interest Income', type: 'Income' },
-  
-  // Expenses
-  { name: 'Rent Expense', type: 'Expenses' },
-  { name: 'Utilities', type: 'Expenses' },
-  { name: 'Salaries & Wages', type: 'Expenses' },
-  { name: 'Cost of Goods Sold', type: 'Expenses' },
-  { name: 'Office Supplies', type: 'Expenses' },
-  { name: 'Marketing Expenses', type: 'Expenses' },
-  
-  // Equity
-  { name: 'Owner\'s Capital', type: 'Equity' },
-  { name: 'Retained Earnings', type: 'Equity' },
-  { name: 'Owner\'s Drawings', type: 'Equity' }
-];
 
 const ACCOUNT_TYPES = ['Assets', 'Liabilities', 'Income', 'Expenses', 'Equity'];
 
@@ -91,14 +56,9 @@ export const ChartOfAccountsManager = () => {
 
       if (error) throw error;
       
-      // If no accounts exist, create default ones
-      if (!data || data.length === 0) {
-        await createDefaultAccounts(businessProfile.id);
-        return;
-      }
-      
       setAccounts(data || []);
     } catch (error: any) {
+      console.error('Error fetching accounts:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -106,35 +66,6 @@ export const ChartOfAccountsManager = () => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const createDefaultAccounts = async (businessId: string) => {
-    try {
-      const accountsToCreate = DEFAULT_ACCOUNTS.map(account => ({
-        business_id: businessId,
-        account_name: account.name,
-        account_type: account.type
-      }));
-
-      const { error } = await supabase
-        .from('chart_of_accounts')
-        .insert(accountsToCreate);
-
-      if (error) throw error;
-
-      toast({
-        title: "Default Accounts Created",
-        description: "Chart of accounts has been set up with default account types."
-      });
-
-      fetchAccounts();
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message
-      });
     }
   };
 
@@ -190,6 +121,7 @@ export const ChartOfAccountsManager = () => {
       setShowAddForm(false);
       setEditingAccount(null);
     } catch (error: any) {
+      console.error('Error saving account:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -216,6 +148,7 @@ export const ChartOfAccountsManager = () => {
 
       fetchAccounts();
     } catch (error: any) {
+      console.error('Error deleting account:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -250,7 +183,6 @@ export const ChartOfAccountsManager = () => {
         </Button>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center space-x-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -274,7 +206,6 @@ export const ChartOfAccountsManager = () => {
         </Select>
       </div>
 
-      {/* Accounts by Type */}
       <div className="space-y-6">
         {ACCOUNT_TYPES.map(type => (
           <Card key={type}>
@@ -324,7 +255,6 @@ export const ChartOfAccountsManager = () => {
         ))}
       </div>
 
-      {/* Add/Edit Account Dialog */}
       <Dialog open={showAddForm} onOpenChange={(open) => {
         setShowAddForm(open);
         if (!open) setEditingAccount(null);
