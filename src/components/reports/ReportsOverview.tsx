@@ -25,6 +25,7 @@ export const ReportsOverview = () => {
 
   const fetchReportData = async () => {
     try {
+      setLoading(true);
       const { data: businessProfile } = await supabase
         .from('business_profiles')
         .select('id')
@@ -33,18 +34,37 @@ export const ReportsOverview = () => {
 
       if (!businessProfile) return;
 
-      // Fetch comprehensive business data
+      // Calculate date range based on selected period
+      const now = new Date();
+      let startDate = new Date();
+      
+      switch (selectedPeriod) {
+        case 'week':
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setMonth(now.getMonth() - 1);
+          break;
+        case 'quarter':
+          startDate.setMonth(now.getMonth() - 3);
+          break;
+        case 'year':
+          startDate.setFullYear(now.getFullYear() - 1);
+          break;
+      }
+
+      // Fetch all necessary data in parallel
       const [
-        { data: transactions },
-        { data: customers },
-        { data: products },
-        { data: invoices },
-        { data: invoiceItems }
+        transactionsResponse,
+        customersResponse,
+        productsResponse,
+        invoicesResponse
       ] = await Promise.all([
         supabase
           .from('transactions')
           .select('*')
-          .eq('business_id', businessProfile.id),
+          .eq('business_id', businessProfile.id)
+          .gte('date', startDate.toISOString().split('T')[0]),
         supabase
           .from('customers')
           .select('*')
@@ -55,18 +75,34 @@ export const ReportsOverview = () => {
           .eq('business_id', businessProfile.id),
         supabase
           .from('invoices')
-          .select('*')
-          .eq('business_id', businessProfile.id),
-        supabase
-          .from('invoice_items')
-          .select('*')
-          .eq('invoice_id', `ANY(${JSON.stringify((await supabase.from('invoices').select('id').eq('business_id', businessProfile.id)).data?.map(i => i.id) || [])})`)
+          .select(`
+            *,
+            invoice_items (
+              quantity,
+              unit_price,
+              purchase_cost,
+              total_amount
+            )
+          `)
+          .eq('business_id', businessProfile.id)
+          .gte('created_at', startDate.toISOString())
       ]);
 
-      // Process data for reports
-      const processedData = processReportData(transactions, customers, products, invoices, invoiceItems);
+      if (transactionsResponse.error) throw transactionsResponse.error;
+      if (customersResponse.error) throw customersResponse.error;
+      if (productsResponse.error) throw productsResponse.error;
+      if (invoicesResponse.error) throw invoicesResponse.error;
+
+      const transactions = transactionsResponse.data || [];
+      const customers = customersResponse.data || [];
+      const products = productsResponse.data || [];
+      const invoices = invoicesResponse.data || [];
+
+      // Process data for comprehensive reporting
+      const processedData = processReportData(transactions, customers, products, invoices, startDate);
       setReportData(processedData);
     } catch (error: any) {
+      console.error('Error fetching report data:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -77,142 +113,146 @@ export const ReportsOverview = () => {
     }
   };
 
-  const processReportData = (transactions: any[], customers: any[], products: any[], invoices: any[], invoiceItems: any[]) => {
-    const now = new Date();
-    let startDate = new Date();
-    
-    // Calculate date range based on selected period
-    switch (selectedPeriod) {
-      case 'week':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        startDate.setMonth(now.getMonth() - 1);
-        break;
-      case 'quarter':
-        startDate.setMonth(now.getMonth() - 3);
-        break;
-      case 'year':
-        startDate.setFullYear(now.getFullYear() - 1);
-        break;
-    }
+  const processReportData = (transactions: any[], customers: any[], products: any[], invoices: any[], startDate: Date) => {
+    // Calculate actual revenue from paid invoices only
+    const paidInvoices = invoices.filter(inv => Number(inv.amount_paid) > 0);
+    const totalRevenue = paidInvoices.reduce((sum, inv) => sum + Number(inv.amount_paid), 0);
 
-    // Calculate actual revenue from paid invoices
-    const periodInvoices = invoices?.filter(inv => 
-      new Date(inv.created_at) >= startDate && Number(inv.amount_paid) > 0
-    ) || [];
+    // Calculate COGS from actual sold items (only from paid invoices)
+    let totalCOGS = 0;
+    paidInvoices.forEach(invoice => {
+      if (invoice.invoice_items) {
+        invoice.invoice_items.forEach((item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          const purchaseCost = Number(item.purchase_cost) || 0;
+          totalCOGS += quantity * purchaseCost;
+        });
+      }
+    });
 
-    const totalRevenue = periodInvoices.reduce((sum, inv) => sum + Number(inv.amount_paid), 0);
+    // Calculate operating expenses from transactions
+    const expenseTransactions = transactions.filter(t => t.type === 'expense');
+    const operatingExpenses = expenseTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
 
-    // Calculate COGS from actual sold items
-    const paidInvoiceIds = periodInvoices.map(inv => inv.id);
-    const soldItems = invoiceItems?.filter(item => 
-      paidInvoiceIds.includes(item.invoice_id)
-    ) || [];
+    // Income from transactions
+    const incomeTransactions = transactions.filter(t => t.type === 'income');
+    const transactionIncome = incomeTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const totalCOGS = soldItems.reduce((sum, item) => 
-      sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0
-    );
-
-    // Calculate operating expenses
-    const periodTransactions = transactions?.filter(t => 
-      new Date(t.date) >= startDate
-    ) || [];
-
-    const operatingExpenses = periodTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
+    // Total expenses = Operating expenses + COGS
     const totalExpenses = operatingExpenses + totalCOGS;
 
-    // Monthly trend data
+    // Net profit = Total revenue (from invoices + transactions) - Total expenses
+    const netProfit = (totalRevenue + transactionIncome) - totalExpenses;
+
+    // Monthly trend data for the last 6 months
     const monthlyData = [];
     for (let i = 5; i >= 0; i--) {
       const date = new Date();
       date.setMonth(date.getMonth() - i);
       const monthName = date.toLocaleDateString('en', { month: 'short' });
       
-      const monthInvoices = invoices?.filter(inv => {
+      // Filter data for this month
+      const monthInvoices = invoices.filter(inv => {
         const invDate = new Date(inv.created_at);
         return invDate.getMonth() === date.getMonth() && 
                invDate.getFullYear() === date.getFullYear() &&
                Number(inv.amount_paid) > 0;
-      }) || [];
+      });
 
-      const monthRevenue = monthInvoices.reduce((sum, inv) => sum + Number(inv.amount_paid), 0);
-
-      const monthTransactions = transactions?.filter(t => {
+      const monthTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
         return tDate.getMonth() === date.getMonth() && 
-               tDate.getFullYear() === date.getFullYear() &&
-               t.type === 'expense';
-      }) || [];
+               tDate.getFullYear() === date.getFullYear();
+      });
 
-      const monthExpenses = monthTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+      const monthRevenue = monthInvoices.reduce((sum, inv) => sum + Number(inv.amount_paid), 0);
+      const monthIncomeTransactions = monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+      const monthExpenseTransactions = monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
 
       // Calculate month COGS
-      const monthInvoiceIds = monthInvoices.map(inv => inv.id);
-      const monthSoldItems = invoiceItems?.filter(item => 
-        monthInvoiceIds.includes(item.invoice_id)
-      ) || [];
+      let monthCOGS = 0;
+      monthInvoices.forEach(invoice => {
+        if (invoice.invoice_items) {
+          invoice.invoice_items.forEach((item: any) => {
+            monthCOGS += (Number(item.quantity) || 0) * (Number(item.purchase_cost) || 0);
+          });
+        }
+      });
 
-      const monthCOGS = monthSoldItems.reduce((sum, item) => 
-        sum + (Number(item.quantity) * Number(item.purchase_cost || 0)), 0
-      );
-
-      const monthTotalExpenses = monthExpenses + monthCOGS;
+      const monthTotalRevenue = monthRevenue + monthIncomeTransactions;
+      const monthTotalExpenses = monthExpenseTransactions + monthCOGS;
 
       monthlyData.push({
         month: monthName,
-        revenue: monthRevenue,
-        operatingExpenses: monthExpenses,
+        revenue: monthTotalRevenue,
+        operatingExpenses: monthExpenseTransactions,
         cogs: monthCOGS,
         totalExpenses: monthTotalExpenses,
-        profit: monthRevenue - monthTotalExpenses
+        profit: monthTotalRevenue - monthTotalExpenses
       });
     }
 
+    // Expense breakdown by category
+    const expenseCategories: { [key: string]: number } = {};
+    expenseTransactions.forEach(transaction => {
+      const category = transaction.category_name || 'Uncategorized';
+      expenseCategories[category] = (expenseCategories[category] || 0) + Number(transaction.amount);
+    });
+
+    const expenseBreakdown = Object.entries(expenseCategories).map(([name, value]) => ({
+      name,
+      value,
+      color: `hsl(${Math.random() * 360}, 70%, 50%)`
+    }));
+
     // Financial breakdown
     const financialData = [
-      { name: 'Revenue', value: totalRevenue, color: '#10b981' },
+      { name: 'Revenue', value: totalRevenue + transactionIncome, color: '#10b981' },
       { name: 'COGS', value: totalCOGS, color: '#f59e0b' },
       { name: 'Operating Expenses', value: operatingExpenses, color: '#ef4444' }
     ];
 
-    // Product performance
-    const topProducts = products?.slice(0, 5).map(p => ({
+    // Top products by value
+    const topProducts = products.slice(0, 5).map(p => ({
       name: p.name,
-      stock: p.stock_quantity,
-      value: p.stock_quantity * p.unit_price
-    })) || [];
+      stock: Number(p.stock_quantity) || 0,
+      value: (Number(p.stock_quantity) || 0) * (Number(p.unit_price) || 0)
+    }));
+
+    // Low stock products
+    const lowStockProducts = products.filter(p => 
+      Number(p.stock_quantity) <= Number(p.reorder_level || 0)
+    ).length;
 
     return {
       summary: {
-        totalRevenue,
+        totalRevenue: totalRevenue + transactionIncome,
         totalCOGS,
         operatingExpenses,
         totalExpenses,
-        netProfit: totalRevenue - totalExpenses,
-        customerCount: customers?.length || 0,
-        productCount: products?.length || 0,
-        invoiceCount: invoices?.length || 0
+        netProfit,
+        customerCount: customers.length,
+        productCount: products.length,
+        invoiceCount: invoices.length,
+        lowStockProducts
       },
       monthlyData,
       financialData,
+      expenseBreakdown,
       topProducts
     };
   };
 
-  if (loading) return <div>Loading reports...</div>;
+  if (loading) return <div className="flex items-center justify-center p-8">Loading reports...</div>;
 
-  const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
+  const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#f97316'];
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Financial Reports</h2>
-          <p className="text-gray-600">Analyze your business performance with accurate accounting</p>
+          <p className="text-gray-600">Comprehensive business performance analysis</p>
         </div>
         <div className="flex items-center space-x-4">
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
@@ -237,12 +277,12 @@ export const ReportsOverview = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">₦{reportData.summary?.totalRevenue?.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground">Cash received</p>
+            <p className="text-xs text-muted-foreground">Invoices + Income transactions</p>
           </CardContent>
         </Card>
 
@@ -290,7 +330,7 @@ export const ReportsOverview = () => {
             <div className={`text-2xl font-bold ${reportData.summary?.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               ₦{reportData.summary?.netProfit?.toLocaleString() || 0}
             </div>
-            <p className="text-xs text-muted-foreground">Bottom line</p>
+            <p className="text-xs text-muted-foreground">Bottom line profit</p>
           </CardContent>
         </Card>
       </div>
@@ -300,7 +340,7 @@ export const ReportsOverview = () => {
         {/* Monthly Trend */}
         <Card>
           <CardHeader>
-            <CardTitle>Financial Trend</CardTitle>
+            <CardTitle>Financial Trend (6 Months)</CardTitle>
             <CardDescription>Monthly revenue, expenses, and profit</CardDescription>
           </CardHeader>
           <CardContent>
@@ -319,17 +359,17 @@ export const ReportsOverview = () => {
           </CardContent>
         </Card>
 
-        {/* Financial Breakdown */}
+        {/* Expense Breakdown */}
         <Card>
           <CardHeader>
-            <CardTitle>Financial Breakdown</CardTitle>
-            <CardDescription>Revenue vs costs breakdown</CardDescription>
+            <CardTitle>Expense Categories</CardTitle>
+            <CardDescription>Breakdown of expenses by category</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={reportData.financialData}
+                  data={reportData.expenseBreakdown}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -338,8 +378,8 @@ export const ReportsOverview = () => {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {reportData.financialData?.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  {reportData.expenseBreakdown?.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(value) => `₦${Number(value).toLocaleString()}`} />
@@ -381,6 +421,12 @@ export const ReportsOverview = () => {
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium">Total Products</span>
             <Badge variant="outline">{reportData.summary?.productCount || 0}</Badge>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium">Low Stock Items</span>
+            <Badge variant={reportData.summary?.lowStockProducts > 0 ? "destructive" : "outline"}>
+              {reportData.summary?.lowStockProducts || 0}
+            </Badge>
           </div>
         </CardContent>
       </Card>
